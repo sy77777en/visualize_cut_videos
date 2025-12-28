@@ -11,6 +11,7 @@
         /* 隐藏滚动条但保留功能 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        img { object-fit: cover; aspect-ratio: 16 / 9; }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-200 min-h-screen font-sans">
@@ -18,7 +19,7 @@
     <div class="max-w-7xl mx-auto p-4 md:p-8">
         <header class="mb-10 text-center">
             <h1 class="text-4xl font-extrabold text-white mb-2 tracking-tight">🎬 AutoShot <span class="text-blue-500 italic">Visualizer</span></h1>
-            <p class="text-slate-400 font-medium">Video Scene Cut Detection & Automated Segmentation Gallery</p>
+            <p class="text-slate-400 font-medium">Video Cut Detection & Automated Segmentation Gallery</p>
         </header>
 
         <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl mb-12 flex flex-wrap gap-6 items-end">
@@ -55,7 +56,7 @@
                     <section>
                         <h2 class="text-2xl font-bold text-white mb-6 flex items-center">
                             <span class="w-1.5 h-8 bg-emerald-500 rounded-full mr-4"></span>
-                            Cut-free Segments
+                            Cut-free Segments (>1s)
                         </h2>
                         <div id="clipGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             </div>
@@ -83,13 +84,10 @@
         const vSelect = document.getElementById('vSelect');
         const mainContent = document.getElementById('mainContent');
 
-        // 初始化
         function init() {
             const thresholds = Object.keys(VIDEO_DATA);
             if (thresholds.length === 0) return;
-            
             thresholds.forEach(t => {
-                // 将目录名 0p05 格式化为 0.05 显示
                 tSelect.add(new Option(`Threshold: ${t.replace('p', '.')}`, t));
             });
             onThresholdChange();
@@ -109,7 +107,6 @@
             renderAll();
         }
 
-        // 核心渲染函数
         function renderAll() {
             const video = VIDEO_DATA[tSelect.value][cSelect.value].find(v => v.name === vSelect.value);
             if (!video) return;
@@ -122,58 +119,56 @@
 
             // 2. 渲染切分出的片段
             const clipGrid = document.getElementById('clipGrid');
-            clipGrid.innerHTML = video.parts.map(p => `
-                <div class="bg-slate-900/50 border border-slate-800 p-3 rounded-2xl hover:bg-slate-900 transition-colors">
-                    <video src="${video.remote_dir}/${p}" controls class="mb-3 rounded-lg"></video>
-                    <div class="px-2">
-                        <p class="text-[10px] text-slate-500 font-mono truncate uppercase tracking-tighter">${p}</p>
+            if (video.parts.length > 0) {
+                clipGrid.innerHTML = video.parts.map(p => `
+                    <div class="bg-slate-900/50 border border-slate-800 p-3 rounded-2xl">
+                        <video src="${video.remote_dir}/${p}" controls class="mb-3 rounded-lg"></video>
+                        <p class="text-[10px] text-slate-500 text-center font-mono truncate uppercase">${p}</p>
                     </div>
-                </div>
-            `).join('');
+                `).join('');
+            } else {
+                clipGrid.innerHTML = `<p class="text-slate-600 italic">No segments longer than 1s detected.</p>`;
+            }
 
-            // 3. 渲染断点帧对比 (一断点一对比行)
+            // 3. 渲染断点对比行 (针对你的 frame_groups 结构)
             const frameGrid = document.getElementById('frameGrid');
-            
-            frameGrid.innerHTML = video.frame_groups.map(group => `
-                <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl hover:border-slate-700 transition-all group">
-                    <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
-                        <div class="flex items-center space-x-2">
-                            <span class="bg-rose-500/10 text-rose-500 px-2 py-0.5 rounded text-[10px] font-bold">DETECTED</span>
-                            <span class="text-blue-400 font-bold font-mono text-sm">Frame ${group.idx}</span>
-                        </div>
-                        <span class="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Timeline Preview</span>
-                    </div>
-                    
-                    <div class="grid grid-cols-3 gap-3">
-                        <div class="space-y-2">
-                            <div class="relative rounded-lg overflow-hidden ring-1 ring-slate-800">
-                                <img src="${video.remote_dir}/${group.prev}" class="w-full aspect-video object-cover" 
-                                     onerror="this.src='https://placehold.co/400x225/0f172a/334155?text=N/A'">
-                            </div>
-                            <p class="text-[9px] text-center text-slate-500 font-bold tracking-tighter">PREV (-1)</p>
+            if (video.frame_groups.length > 0) {
+                frameGrid.innerHTML = video.frame_groups.map(group => `
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl">
+                        <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+                            <span class="text-blue-400 font-bold font-mono text-sm tracking-tight">Frame Index: ${group.idx}</span>
+                            <span class="bg-rose-500/10 text-rose-500 px-2 py-0.5 rounded text-[9px] font-black uppercase">Cut Detected</span>
                         </div>
                         
-                        <div class="space-y-2">
-                            <div class="relative rounded-lg overflow-hidden ring-2 ring-rose-500 shadow-lg shadow-rose-500/20">
-                                <img src="${video.remote_dir}/${group.current}" class="w-full aspect-video object-cover"
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="space-y-1.5">
+                                <img src="${group.prev ? video.remote_dir + '/' + group.prev : ''}" 
+                                     class="rounded-lg ring-1 ring-slate-800 w-full bg-slate-800"
                                      onerror="this.src='https://placehold.co/400x225/0f172a/334155?text=N/A'">
+                                <p class="text-[9px] text-center text-slate-500 font-bold">PREV (-1)</p>
                             </div>
-                            <p class="text-[9px] text-center text-rose-500 font-black tracking-tighter italic underline decoration-2">CUT FRAME</p>
-                        </div>
-                        
-                        <div class="space-y-2">
-                            <div class="relative rounded-lg overflow-hidden ring-1 ring-slate-800">
-                                <img src="${video.remote_dir}/${group.next}" class="w-full aspect-video object-cover"
+                            
+                            <div class="space-y-1.5">
+                                <img src="${group.current ? video.remote_dir + '/' + group.current : ''}" 
+                                     class="rounded-lg ring-2 ring-rose-500 shadow-lg shadow-rose-500/20 w-full bg-slate-800"
+                                     onerror="this.src='https://placehold.co/400x225/0f172a/334155?text=Error'">
+                                <p class="text-[9px] text-center text-rose-500 font-black italic">CUT FRAME</p>
+                            </div>
+                            
+                            <div class="space-y-1.5">
+                                <img src="${group.next ? video.remote_dir + '/' + group.next : ''}" 
+                                     class="rounded-lg ring-1 ring-slate-700 w-full bg-slate-800"
                                      onerror="this.src='https://placehold.co/400x225/0f172a/334155?text=N/A'">
+                                <p class="text-[9px] text-center text-slate-500 font-bold">NEXT (+1)</p>
                             </div>
-                            <p class="text-[9px] text-center text-slate-500 font-bold tracking-tighter">NEXT (+1)</p>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `).join('');
+            } else {
+                frameGrid.innerHTML = `<p class="text-slate-600 italic">No cut points detected for this threshold.</p>`;
+            }
         }
 
-        // 启动
         init();
     </script>
 </body>
