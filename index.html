@@ -1,144 +1,50 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoShot Video Analysis Visualizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="data.js"></script>
-    <style>
-        video { background-color: #000; border-radius: 0.5rem; width: 100%; }
-        .gallery-img { cursor: pointer; transition: transform 0.2s; }
-        .gallery-img:hover { transform: scale(1.05); }
-    </style>
-</head>
-<body class="bg-slate-950 text-slate-200 min-h-screen">
+function renderAll() {
+    const video = VIDEO_DATA[tSelect.value][cSelect.value].find(v => v.name === vSelect.value);
+    if (!video) return;
 
-    <div class="max-w-7xl mx-auto p-4 md:p-8">
-        <header class="mb-10 text-center">
-            <h1 class="text-4xl font-extrabold text-white mb-2">🎬 AutoShot <span class="text-blue-500">Visualizer</span></h1>
-            <p class="text-slate-400">基于转场检测的视频自动切分结果展示</p>
-        </header>
+    document.getElementById('mainContent').classList.remove('hidden');
 
-        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl mb-10 flex flex-wrap gap-6">
-            <div class="flex-1 min-w-[150px]">
-                <label class="block text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wider">Threshold</label>
-                <select id="tSelect" onchange="onThresholdChange()" class="w-full bg-slate-800 border-slate-700 text-white rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all"></select>
+    // 1. 设置主视频
+    const oriVideo = document.getElementById('oriVideo');
+    oriVideo.src = `${video.remote_dir}/${video.origin}`;
+
+    // 2. 渲染切分出的视频片段
+    const clipGrid = document.getElementById('clipGrid');
+    clipGrid.innerHTML = video.parts.map(p => `
+        <div class="bg-slate-900 border border-slate-800 p-2 rounded-xl">
+            <video src="${video.remote_dir}/${p}" controls class="mb-2"></video>
+            <p class="text-[10px] text-slate-500 text-center font-mono truncate">${p}</p>
+        </div>
+    `).join('');
+
+    // 3. 渲染断点帧对比 (每一行一个断点)
+    const frameGrid = document.getElementById('frameGrid');
+    // 修改为单列布局 (grid-cols-1)，确保每一组占据一行
+    frameGrid.className = "grid grid-cols-1 gap-8"; 
+    
+    frameGrid.innerHTML = video.frame_groups.map(group => `
+        <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-lg">
+            <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                <span class="text-blue-400 font-bold font-mono">Cut Point: Frame ${group.idx}</span>
+                <span class="text-[10px] text-slate-500 uppercase tracking-widest">Sequence Preview</span>
             </div>
-            <div class="flex-1 min-w-[150px]">
-                <label class="block text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wider">Category</label>
-                <select id="cSelect" onchange="onCategoryChange()" class="w-full bg-slate-800 border-slate-700 text-white rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all"></select>
-            </div>
-            <div class="flex-[2] min-w-[250px]">
-                <label class="block text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wider">Select Video</label>
-                <select id="vSelect" onchange="renderAll()" class="w-full bg-slate-800 border-slate-700 text-white rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all"></select>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="space-y-1">
+                    <img src="${video.remote_dir}/${group.prev}" class="rounded-lg ring-1 ring-slate-700 w-full" 
+                         onerror="this.src='https://placehold.co/400x225/1e293b/64748b?text=N/A'">
+                    <p class="text-[10px] text-center text-slate-500 font-medium">PREV (-1)</p>
+                </div>
+                <div class="space-y-1">
+                    <img src="${video.remote_dir}/${group.current}" class="rounded-lg ring-2 ring-red-500 w-full"
+                         onerror="this.src='https://placehold.co/400x225/1e293b/64748b?text=N/A'">
+                    <p class="text-[10px] text-center text-red-400 font-bold">CURRENT (CUT)</p>
+                </div>
+                <div class="space-y-1">
+                    <img src="${video.remote_dir}/${group.next}" class="rounded-lg ring-1 ring-slate-700 w-full"
+                         onerror="this.src='https://placehold.co/400x225/1e293b/64748b?text=N/A'">
+                    <p class="text-[10px] text-center text-slate-500 font-medium">NEXT (+1)</p>
+                </div>
             </div>
         </div>
-
-        <div id="mainContent" class="hidden animate-in fade-in duration-500">
-            
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div class="lg:col-span-2 space-y-8">
-                    <section>
-                        <h2 class="text-2xl font-bold text-white mb-4 flex items-center">
-                            <span class="w-2 h-8 bg-blue-500 rounded mr-3"></span> Original Video
-                        </h2>
-                        <div class="aspect-video">
-                            <video id="oriVideo" controls class="shadow-2xl ring-1 ring-slate-700"></video>
-                        </div>
-                    </section>
-
-                    <section>
-                        <h2 class="text-2xl font-bold text-white mb-4 flex items-center">
-                            <span class="w-2 h-8 bg-green-500 rounded mr-3"></span> Cut-free Clips (>1s)
-                        </h2>
-                        <div id="clipGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            </div>
-                    </section>
-                </div>
-
-                <div class="space-y-8">
-                    <section>
-                        <h2 class="text-2xl font-bold text-white mb-4 flex items-center">
-                            <span class="w-2 h-8 bg-red-500 rounded mr-3"></span> Detected Cut Frames
-                        </h2>
-                        <div id="frameGrid" class="grid grid-cols-2 gap-3">
-                            </div>
-                    </section>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
-    <script>
-        const tSelect = document.getElementById('tSelect');
-        const cSelect = document.getElementById('cSelect');
-        const vSelect = document.getElementById('vSelect');
-        const mainContent = document.getElementById('mainContent');
-
-        // 1. 初始化阈值下拉框
-        function init() {
-            const thresholds = Object.keys(VIDEO_DATA);
-            if (thresholds.length === 0) return;
-            
-            thresholds.forEach(t => {
-                tSelect.add(new Option(t.replace('p', '.'), t));
-            });
-            onThresholdChange();
-        }
-
-        // 2. 阈值改变时更新分类
-        function onThresholdChange() {
-            const categories = Object.keys(VIDEO_DATA[tSelect.value]);
-            cSelect.innerHTML = "";
-            categories.forEach(c => {
-                cSelect.add(new Option(c, c));
-            });
-            onCategoryChange();
-        }
-
-        // 3. 分类改变时更新视频列表
-        function onCategoryChange() {
-            const videos = VIDEO_DATA[tSelect.value][cSelect.value];
-            vSelect.innerHTML = "";
-            videos.forEach(v => {
-                vSelect.add(new Option(v.name, v.name));
-            });
-            renderAll();
-        }
-
-        // 4. 渲染所有选中的内容
-        function renderAll() {
-            const currentVideo = VIDEO_DATA[tSelect.value][cSelect.value].find(v => v.name === vSelect.value);
-            if (!currentVideo) return;
-
-            mainContent.classList.remove('hidden');
-
-            // A. 渲染原始视频
-            const oriVideo = document.getElementById('oriVideo');
-            oriVideo.src = `${currentVideo.remote_dir}/${currentVideo.origin}`;
-
-            // B. 渲染切分短片
-            const clipGrid = document.getElementById('clipGrid');
-            clipGrid.innerHTML = currentVideo.parts.map(p => `
-                <div class="bg-slate-900 border border-slate-800 p-2 rounded-xl">
-                    <video src="${currentVideo.remote_dir}/${p}" controls class="mb-2"></video>
-                    <p class="text-[10px] text-slate-500 text-center font-mono truncate">${p}</p>
-                </div>
-            `).join('');
-
-            // C. 渲染 Cut 帧图
-            const frameGrid = document.getElementById('frameGrid');
-            frameGrid.innerHTML = currentVideo.frames.map(f => `
-                <div class="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center">
-                    <img src="${currentVideo.remote_dir}/${f}" class="gallery-img rounded mb-2">
-                    <span class="text-[10px] text-slate-400 font-mono">${f.split('_')[2]}</span>
-                </div>
-            `).join('');
-        }
-
-        init();
-    </script>
-</body>
-</html>
+    `).join('');
+}
